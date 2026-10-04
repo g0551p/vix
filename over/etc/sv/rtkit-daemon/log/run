@@ -1,0 +1,3 @@
+#!/bin/sh
+mkdir -p /var/log/rtkit-daemon
+exec svlogd -tt /var/log/rtkit-daemon

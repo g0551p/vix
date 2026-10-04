@@ -1,0 +1,5 @@
+#!/bin/sh
+exec 2>&1
+mkdir -p /run/NetworkManager
+while [ ! -S /run/dbus/system_bus_socket ]; do sleep 1; done
+exec /nix/var/nix/profiles/vix-network/bin/NetworkManager --no-daemon

@@ -1,0 +1,98 @@
+#!/bin/busybox sh
+
+/bin/busybox --install -s /bin
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+mkdir -p /proc /sys /dev /dev/pts /dev/shm /mnt
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || mount -t tmpfs tmpfs /dev
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts 2>/dev/null
+mount -t tmpfs tmpfs /dev/shm 2>/dev/null
+
+cmdline="$(cat /proc/cmdline 2>/dev/null)"
+
+for m in overlay squashfs loop isofs udf sr_mod cdrom \
+         ahci ata_piix ata_generic libata sd_mod nvme \
+         virtio virtio_pci virtio_blk virtio_scsi \
+         usb_common usb_storage uas \
+         xhci_hcd xhci_pci ehci_hcd ehci_pci ohci_hcd uhci_hcd \
+         usbhid hid hid_generic atkbd i8042 psmouse evdev \
+         ext4 btrfs xfs vfat; do
+  modprobe "$m" 2>/dev/null
+done
+
+rescue() {
+  echo
+  echo "vix: $1"
+  echo "vix: dropping to rescue shell"
+  exec cttyhack /bin/sh
+}
+
+rootdev=""
+for arg in $cmdline; do
+  case "$arg" in
+    root=*) rootdev="${arg#root=}" ;;
+  esac
+done
+
+if [ -n "$rootdev" ] && [ "$rootdev" != "/dev/ram0" ]; then
+  case "$rootdev" in
+    UUID=*|PARTUUID=*|LABEL=*|PARTLABEL=*)
+      rootdev="$(findfs "$rootdev" 2>/dev/null)" || rootdev="" ;;
+  esac
+  [ -n "$rootdev" ] || rescue "cannot resolve root device"
+  i=0
+  while [ ! -e "$rootdev" ] && [ "$i" -lt 20 ]; do sleep 0.5; i=$((i + 1)); done
+  mkdir -p /mnt/root
+  mount -o rw "$rootdev" /mnt/root 2>/dev/null || \
+    mount "$rootdev" /mnt/root || rescue "cannot mount $rootdev"
+  mount --move /proc /mnt/root/proc
+  mount --move /sys /mnt/root/sys
+  mount --move /dev /mnt/root/dev
+  exec switch_root /mnt/root /sbin/init
+fi
+
+mkdir -p /mnt/medium /mnt/lower /mnt/over /mnt/work /mnt/root
+
+medium=
+try=0
+while [ -z "$medium" ] && [ "$try" -lt 10 ]; do
+  medium="$(blkid -L VIX 2>/dev/null)" || medium=
+  [ -n "$medium" ] && break
+  for dev in /dev/sr0 /dev/sd? /dev/sd?[0-9] /dev/vd? /dev/vd?[0-9] /dev/nvme?n? /dev/nvme?n?p?; do
+    [ -b "$dev" ] || continue
+    if mount -o ro "$dev" /mnt/medium 2>/dev/null; then
+      if [ -e /mnt/medium/LiveOS/rootfs.squashfs ]; then
+        medium="$dev"
+        break
+      fi
+      umount /mnt/medium 2>/dev/null
+    fi
+  done
+  [ -n "$medium" ] && break
+  try=$((try + 1))
+  sleep 1
+done
+
+[ -n "$medium" ] || rescue "could not find LiveOS/rootfs.squashfs"
+
+[ -e /mnt/medium/LiveOS/rootfs.squashfs ] || mount -o ro "$medium" /mnt/medium || rescue "mount $medium failed"
+
+loop="$(losetup -f)"
+losetup "$loop" /mnt/medium/LiveOS/rootfs.squashfs || rescue "losetup failed"
+mount -t squashfs -o ro "$loop" /mnt/lower || rescue "squashfs mount failed"
+
+mount -t tmpfs -o mode=0755 tmpfs /mnt/over
+mkdir -p /mnt/over/root /mnt/over/work
+mount -t overlay overlay \
+  -o lowerdir=/mnt/lower,upperdir=/mnt/over/root,workdir=/mnt/over/work \
+  /mnt/root || rescue "overlay mount failed"
+
+mount --move /proc /mnt/root/proc
+mount --move /sys /mnt/root/sys
+mount --move /dev /mnt/root/dev
+
+exec switch_root /mnt/root /sbin/init

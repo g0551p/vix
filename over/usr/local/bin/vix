@@ -1,0 +1,72 @@
+#!/bin/sh
+set -eu
+
+NIX=/nix/var/nix/profiles/default/bin/nix
+NIXPKGS=nixpkgs
+
+usage() {
+  cat <<'EOF'
+vix - system helpers (Nix backend)
+
+  vix kernel [ATTR]   install kernel ATTR (default: linux) and its modules
+  vix kmod ATTR       build linuxPackages.ATTR for the running kernel, merge modules
+  vix firmware        install linux-firmware into /lib/firmware
+
+for regular packages use nix directly:
+  nix profile add nixpkgs#htop
+EOF
+  exit 1
+}
+
+[ "$(id -u)" -eq 0 ] || { echo "vix: must be root" >&2; exit 1; }
+
+cmd="${1:-}"
+[ -n "$cmd" ] || usage
+shift || true
+
+case "$cmd" in
+  kernel)
+    attr="${1:-linux}"
+    kimg="$("$NIX" build --no-link --print-out-paths "$NIXPKGS#$attr" | head -1)"
+    kmods="$("$NIX" build --no-link --print-out-paths "$NIXPKGS#$attr.modules" | head -1)"
+    kver="$(ls "$kmods/lib/modules")"
+    mkdir -p /lib/modules /boot
+    rm -rf "/lib/modules/$kver"
+    cp -a "$kmods/lib/modules/$kver" "/lib/modules/"
+    depmod "$kver"
+    cp "$kimg/bzImage" "/boot/vmlinuz-$kver"
+    echo "vix: kernel $kver ready (/boot/vmlinuz-$kver, /lib/modules/$kver)"
+    ;;
+  kmod)
+    [ $# -eq 1 ] || usage
+    attr="$1"
+    kver="$(uname -r)"
+    pkg="$("$NIX" build --no-link --print-out-paths "$NIXPKGS#linuxPackages.$attr" | head -1)"
+    merged=0
+    for sub in "lib/modules/$kver" "kernel"; do
+      if [ -d "$pkg/$sub" ]; then
+        mkdir -p "/lib/modules/$kver"
+        cp -a "$pkg/$sub/." "/lib/modules/$kver/"
+        merged=1
+      fi
+    done
+    [ "$merged" -eq 1 ] || { echo "vix: no modules for $kver in linuxPackages.$attr" >&2; exit 1; }
+    depmod "$kver" && echo "vix: modules from $attr merged and depmod done"
+    ;;
+  firmware)
+    mkdir -p /lib/firmware
+    for p in linux-firmware sof-firmware alsa-firmware; do
+      d="$("$NIX" build --no-link --print-out-paths "$NIXPKGS#$p" | head -1)"
+      [ -d "$d/lib/firmware" ] || continue
+      for e in "$d"/lib/firmware/*; do
+        ln -sfn "$e" "/lib/firmware/$(basename "$e")"
+      done
+    done
+    reg="$("$NIX" build --no-link --print-out-paths "$NIXPKGS#wireless-regdb" | head -1)"
+    cp -a "$reg/lib/firmware/." /lib/firmware/
+    echo "vix: firmware installed"
+    ;;
+  *)
+    usage
+    ;;
+esac

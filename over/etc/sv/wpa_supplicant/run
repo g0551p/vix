@@ -1,0 +1,7 @@
+#!/bin/sh
+exec 2>&1
+mkdir -p /run/wpa_supplicant
+while [ ! -S /run/dbus/system_bus_socket ]; do sleep 1; done
+wpa=/nix/var/nix/profiles/vix-network/sbin/wpa_supplicant
+[ -x "$wpa" ] || wpa=/nix/var/nix/profiles/vix-network/bin/wpa_supplicant
+exec "$wpa" -u -O /run/wpa_supplicant

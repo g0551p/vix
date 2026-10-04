@@ -1,0 +1,7 @@
+NAME="Vix"
+ID="vix"
+PRETTY_NAME="Vix Linux"
+LOGO="vix-logo"
+ANSI_COLOR="0;38;2;71;128;97"
+
+DISTRIB_ID="vix"

@@ -1,0 +1,9 @@
+#!/bin/sh
+exec 2>&1
+while [ ! -S /run/dbus/system_bus_socket ]; do sleep 1; done
+for p in /nix/var/nix/profiles/vix-network/libexec/rtkit-daemon \
+         /nix/var/nix/profiles/vix-network/bin/rtkit-daemon; do
+  [ -x "$p" ] && exec "$p" --stderr
+done
+echo "rtkit: rtkit-daemon not found" >&2
+exit 1

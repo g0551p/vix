@@ -1,0 +1,6 @@
+#!/bin/sh
+exec 2>&1
+mkdir -p /run/dbus
+[ -s /etc/machine-id ] || /nix/var/nix/profiles/vix-network/bin/dbus-uuidgen --ensure=/etc/machine-id
+exec /nix/var/nix/profiles/vix-network/bin/dbus-daemon \
+  --config-file=/etc/dbus-1/system.conf --nofork
