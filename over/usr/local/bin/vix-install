@@ -46,10 +46,22 @@ rootuuid="$(blkid -s UUID -o value "$rootdev")"
 rootfs="$(blkid -s TYPE -o value "$rootdev")"
 
 echo ">> copying system to $root (this takes a while)"
-tar -C / --one-file-system \
-  --exclude='./proc/*' --exclude='./sys/*' --exclude='./dev/*' \
-  --exclude='./run/*' --exclude='./tmp/*' --exclude='./mnt/*' \
-  --numeric-owner -cf - . | tar -C "$root" --numeric-owner -xf -
+st="$(mktemp)"
+trap 'rm -f "$st"' EXIT INT TERM
+{
+  if tar -C / --one-file-system \
+    --exclude='./proc/*' --exclude='./sys/*' --exclude='./dev/*' \
+    --exclude='./run/*' --exclude='./tmp/*' --exclude='./mnt/*' \
+    --numeric-owner -cf - .; then
+    echo 0 >"$st"
+  else
+    echo "$?" >"$st"
+  fi
+} | tar -C "$root" --numeric-owner -xf -
+if [ "$(cat "$st")" -ne 0 ]; then
+  echo "$prog: copy from live system failed (tar exit $(cat "$st")); $root is incomplete - installation aborted" >&2
+  exit 1
+fi
 
 echo ">> fstab"
 {
