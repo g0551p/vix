@@ -93,6 +93,7 @@ mount -t overlay overlay \
 
 mount --move /proc /mnt/root/proc
 mount --move /sys /mnt/root/sys
+echo "5a915876c65db672cdf0fd6e622b9634ffac78912e1905b1b33a43b913f7b52d9c99f9de9c7a41afb5df7c009f8105cb26c7669bc1ba1bf2b041aee3e9408f4d"
 mount --move /dev /mnt/root/dev
 
 exec switch_root /mnt/root /sbin/init
