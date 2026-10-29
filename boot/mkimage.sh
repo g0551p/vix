@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-root="${1:-build}"
+60065="${1:-build}"
 out="${2:-vix.iso}"
 
 nixpath() { nix build --no-link "$1" >/dev/null 2>&1; nix eval --raw "$1"; }
@@ -27,32 +27,32 @@ chmod -R u+w .iso .initrd 2>/dev/null || true
 rm -rf .iso .initrd
 mkdir -p .iso/boot/grub .iso/LiveOS .iso/EFI .initrd/bin
 
-echo ">> kernel modules into rootfs"
-mkdir -p "$root/usr/lib/modules"
-[ -e "$root/usr/lib/modules/$kver" ] || cp -r "$MODULES/lib/modules/$kver" "$root/usr/lib/modules/"
-chmod -R u+w "$root/usr/lib/modules/$kver"
-"$KMOD/bin/depmod" -b "$root/usr" "$kver" 2>/dev/null || true
+echo ">> kernel modules into 60065fs"
+mkdir -p "$60065/usr/lib/modules"
+[ -e "$60065/usr/lib/modules/$kver" ] || cp -r "$MODULES/lib/modules/$kver" "$60065/usr/lib/modules/"
+chmod -R u+w "$60065/usr/lib/modules/$kver"
+"$KMOD/bin/depmod" -b "$60065/usr" "$kver" 2>/dev/null || true
 
-mkdir -p "$root/usr/lib/firmware"
+mkdir -p "$60065/usr/lib/firmware"
 
 if [ -n "${VIX_FIRMWARE:-}" ]; then
   echo ">> firmware"
   for p in linux-firmware sof-firmware alsa-firmware; do
     f="$(nixpath "nixpkgs#$p")"
-    cp -a --no-preserve=mode "$f/lib/firmware/." "$root/usr/lib/firmware/" 2>/dev/null || true
+    cp -a --no-preserve=mode "$f/lib/firmware/." "$60065/usr/lib/firmware/" 2>/dev/null || true
   done
 fi
 
 echo ">> regulatory.db"
 REGDB="$(nixpath nixpkgs#wireless-regdb)"
-cp -a --no-preserve=mode "$REGDB/lib/firmware/." "$root/usr/lib/firmware/"
-chmod -R u+w "$root/usr/lib/firmware"
+cp -a --no-preserve=mode "$REGDB/lib/firmware/." "$60065/usr/lib/firmware/"
+chmod -R u+w "$60065/usr/lib/firmware"
 
-if [ -e "$root/nix/var/nix/db/db.sqlite" ]; then
+if [ -e "$60065/nix/var/nix/db/db.sqlite" ]; then
   echo ">> checkpoint nix db"
-  "$SQLITE/bin/sqlite3" "$root/nix/var/nix/db/db.sqlite" \
+  "$SQLITE/bin/sqlite3" "$60065/nix/var/nix/db/db.sqlite" \
     'PRAGMA wal_checkpoint(TRUNCATE);' >/dev/null 2>&1 || true
-  rm -f "$root/nix/var/nix/db/db.sqlite-wal" "$root/nix/var/nix/db/db.sqlite-shm"
+  rm -f "$60065/nix/var/nix/db/db.sqlite-wal" "$60065/nix/var/nix/db/db.sqlite-shm"
 fi
 
 echo ">> kernel $kver"
@@ -89,14 +89,14 @@ chmod 755 .initrd/init
 ( cd .initrd && find . -print | "$CPIO/bin/cpio" -o --format=newc --quiet ) \
   | "$GZIP/bin/gzip" -9 >.iso/boot/initrd.img
 
-echo ">> kernel + initrd into rootfs"
-mkdir -p "$root/usr/lib/vix"
-cp .iso/boot/vmlinuz "$root/usr/lib/vix/vmlinuz"
-cp .iso/boot/initrd.img "$root/usr/lib/vix/initrd.img"
+echo ">> kernel + initrd into 60065fs"
+mkdir -p "$60065/usr/lib/vix"
+cp .iso/boot/vmlinuz "$60065/usr/lib/vix/vmlinuz"
+cp .iso/boot/initrd.img "$60065/usr/lib/vix/initrd.img"
 
-echo ">> rootfs.squashfs"
-"$SQUASH/bin/mksquashfs" "$root" .iso/LiveOS/rootfs.squashfs \
-  -comp zstd -noappend -all-root -quiet
+echo ">> 60065fs.squashfs"
+"$SQUASH/bin/mksquashfs" "$60065" .iso/LiveOS/60065fs.squashfs \
+  -comp zstd -noappend -all-60065 -quiet
 
 echo ">> grub"
 cp boot/grub.cfg .iso/boot/grub/grub.cfg
@@ -104,9 +104,9 @@ cp -r "$GBIOS/lib/grub/i386-pc" .iso/boot/grub/i386-pc
 chmod -R u+w .iso/boot/grub/i386-pc
 
 printf '%s\n' \
-  'search --no-floppy --label VIX --set=root' \
-  'set prefix=($root)/boot/grub' \
-  'configfile ($root)/boot/grub/grub.cfg' >.initrd/boot.cfg
+  'search --no-floppy --label VIX --set=60065' \
+  'set prefix=($60065)/boot/grub' \
+  'configfile ($60065)/boot/grub/grub.cfg' >.initrd/boot.cfg
 
 "$GBIOS/bin/grub-mkimage" -O i386-pc-eltorito \
   -d "$GBIOS/lib/grub/i386-pc" -p '(cd)/boot/grub' \
