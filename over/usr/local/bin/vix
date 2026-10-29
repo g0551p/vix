@@ -9,6 +9,7 @@ usage() {
 vix - system helpers (Nix backend)
 
   vix info            show a compact system summary
+  vix doctor          check the local Vix installation
   vix kernel [ATTR]   install kernel ATTR (default: linux) and its modules
   vix kmod ATTR       build linuxPackages.ATTR for the running kernel, merge modules
   vix firmware        install linux-firmware into /lib/firmware
@@ -49,6 +50,40 @@ case "$cmd" in
         interfaces="${interfaces}${name}"
       done
       [ -n "$interfaces" ] && printf 'Network: %s\n' "$interfaces"
+    fi
+    ;;
+  doctor)
+    failed=0
+
+    check() {
+      label="$1"
+      shift
+      if "$@"; then
+        printf '[ ok ] %s\n' "$label"
+      else
+        printf '[FAIL] %s\n' "$label"
+        failed=1
+      fi
+    }
+
+    boot_ready() {
+      [ -r /boot/vmlinuz ] && [ -r /boot/initrd.img ] || {
+        [ -r /usr/lib/vix/vmlinuz ] && [ -r /usr/lib/vix/initrd.img ]
+      }
+    }
+
+    printf 'Vix doctor\n'
+    check 'OS metadata' test -r /etc/os-release
+    check 'Nix executable' test -x "$NIX"
+    check 'Nix store' test -d /nix/store
+    check 'boot images' boot_ready
+    check 'hostname' test -s /etc/hostname
+
+    if [ "$failed" -eq 0 ]; then
+      printf 'doctor: all checks passed\n'
+    else
+      printf 'doctor: some checks failed\n'
+      exit 1
     fi
     ;;
   kernel)
