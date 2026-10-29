@@ -8,6 +8,7 @@ usage() {
   cat <<'EOF'
 vix - system helpers (Nix backend)
 
+  vix info            show a compact system summary
   vix kernel [ATTR]   install kernel ATTR (default: linux) and its modules
   vix kmod ATTR       build linuxPackages.ATTR for the running kernel, merge modules
   vix firmware        install linux-firmware into /lib/firmware
@@ -18,14 +19,40 @@ EOF
   exit 1
 }
 
-[ "$(id -u)" -eq 0 ] || { echo "vix: must be root" >&2; exit 1; }
+require_root() {
+  [ "$(id -u)" -eq 0 ] || { echo "vix: must be root" >&2; exit 1; }
+}
 
 cmd="${1:-}"
 [ -n "$cmd" ] || usage
 shift || true
 
 case "$cmd" in
+  info)
+    . /etc/os-release
+    printf 'Vix %s\n' "${VERSION_ID:-rolling}"
+    printf 'Kernel: %s\n' "$(uname -r)"
+    printf 'Arch:   %s\n' "$(uname -m)"
+
+    if [ -r /proc/meminfo ]; then
+      mem_kib="$(awk '/^MemTotal:/{print $2; exit}' /proc/meminfo)"
+      [ -n "$mem_kib" ] && printf 'Memory: %s MiB\n' "$((mem_kib / 1024))"
+    fi
+
+    if [ -r /sys/class/net ]; then
+      interfaces=
+      for iface in /sys/class/net/*; do
+        [ -e "$iface" ] || continue
+        name="${iface##*/}"
+        [ "$name" = lo ] && continue
+        [ -n "$interfaces" ] && interfaces="$interfaces, "
+        interfaces="${interfaces}${name}"
+      done
+      [ -n "$interfaces" ] && printf 'Network: %s\n' "$interfaces"
+    fi
+    ;;
   kernel)
+    require_root
     attr="${1:-linux}"
     kimg="$("$NIX" build --no-link --print-out-paths "$NIXPKGS#$attr" | head -1)"
     kmods="$("$NIX" build --no-link --print-out-paths "$NIXPKGS#$attr.modules" | head -1)"
@@ -38,6 +65,7 @@ case "$cmd" in
     echo "vix: kernel $kver ready (/boot/vmlinuz-$kver, /lib/modules/$kver)"
     ;;
   kmod)
+    require_root
     [ $# -eq 1 ] || usage
     attr="$1"
     kver="$(uname -r)"
@@ -54,6 +82,7 @@ case "$cmd" in
     depmod "$kver" && echo "vix: modules from $attr merged and depmod done"
     ;;
   firmware)
+    require_root
     mkdir -p /lib/firmware
     for p in linux-firmware sof-firmware alsa-firmware; do
       d="$("$NIX" build --no-link --print-out-paths "$NIXPKGS#$p" | head -1)"
