@@ -31,31 +31,31 @@ rescue() {
   exec cttyhack /bin/sh
 }
 
-60065dev=""
+rootdev=""
 for arg in $cmdline; do
   case "$arg" in
-    60065=*) 60065dev="${arg#60065=}" ;;
+    root=*) rootdev="${arg#root=}" ;;
   esac
 done
 
-if [ -n "$60065dev" ] && [ "$60065dev" != "/dev/ram0" ]; then
-  case "$60065dev" in
+if [ -n "$rootdev" ] && [ "$rootdev" != "/dev/ram0" ]; then
+  case "$rootdev" in
     UUID=*|PARTUUID=*|LABEL=*|PARTLABEL=*)
-      60065dev="$(findfs "$60065dev" 2>/dev/null)" || 60065dev="" ;;
+      rootdev="$(findfs "$rootdev" 2>/dev/null)" || rootdev="" ;;
   esac
-  [ -n "$60065dev" ] || rescue "cannot resolve 60065 device"
+  [ -n "$rootdev" ] || rescue "cannot resolve root device"
   i=0
-  while [ ! -e "$60065dev" ] && [ "$i" -lt 20 ]; do sleep 0.5; i=$((i + 1)); done
-  mkdir -p /mnt/60065
-  mount -o rw "$60065dev" /mnt/60065 2>/dev/null || \
-    mount "$60065dev" /mnt/60065 || rescue "cannot mount $60065dev"
-  mount --move /proc /mnt/60065/proc
-  mount --move /sys /mnt/60065/sys
-  mount --move /dev /mnt/60065/dev
-  exec switch_60065 /mnt/60065 /sbin/init
+  while [ ! -e "$rootdev" ] && [ "$i" -lt 20 ]; do sleep 0.5; i=$((i + 1)); done
+  mkdir -p /mnt/root
+  mount -o rw "$rootdev" /mnt/root 2>/dev/null || \
+    mount "$rootdev" /mnt/root || rescue "cannot mount $rootdev"
+  mount --move /proc /mnt/root/proc
+  mount --move /sys /mnt/root/sys
+  mount --move /dev /mnt/root/dev
+  exec switch_root /mnt/root /sbin/init
 fi
 
-mkdir -p /mnt/medium /mnt/lower /mnt/over /mnt/work /mnt/60065
+mkdir -p /mnt/medium /mnt/lower /mnt/over /mnt/work /mnt/root
 
 medium=
 try=0
@@ -65,7 +65,7 @@ while [ -z "$medium" ] && [ "$try" -lt 10 ]; do
   for dev in /dev/sr0 /dev/sd? /dev/sd?[0-9] /dev/vd? /dev/vd?[0-9] /dev/nvme?n? /dev/nvme?n?p?; do
     [ -b "$dev" ] || continue
     if mount -o ro "$dev" /mnt/medium 2>/dev/null; then
-      if [ -e /mnt/medium/LiveOS/60065fs.squashfs ]; then
+      if [ -e /mnt/medium/LiveOS/rootfs.squashfs ]; then
         medium="$dev"
         break
       fi
@@ -77,22 +77,22 @@ while [ -z "$medium" ] && [ "$try" -lt 10 ]; do
   sleep 1
 done
 
-[ -n "$medium" ] || rescue "could not find LiveOS/60065fs.squashfs"
+[ -n "$medium" ] || rescue "could not find LiveOS/rootfs.squashfs"
 
-[ -e /mnt/medium/LiveOS/60065fs.squashfs ] || mount -o ro "$medium" /mnt/medium || rescue "mount $medium failed"
+[ -e /mnt/medium/LiveOS/rootfs.squashfs ] || mount -o ro "$medium" /mnt/medium || rescue "mount $medium failed"
 
 loop="$(losetup -f)"
-losetup "$loop" /mnt/medium/LiveOS/60065fs.squashfs || rescue "losetup failed"
+losetup "$loop" /mnt/medium/LiveOS/rootfs.squashfs || rescue "losetup failed"
 mount -t squashfs -o ro "$loop" /mnt/lower || rescue "squashfs mount failed"
 
 mount -t tmpfs -o mode=0755 tmpfs /mnt/over
-mkdir -p /mnt/over/60065 /mnt/over/work
+mkdir -p /mnt/over/root /mnt/over/work
 mount -t overlay overlay \
-  -o lowerdir=/mnt/lower,upperdir=/mnt/over/60065,workdir=/mnt/over/work \
-  /mnt/60065 || rescue "overlay mount failed"
+  -o lowerdir=/mnt/lower,upperdir=/mnt/over/root,workdir=/mnt/over/work \
+  /mnt/root || rescue "overlay mount failed"
 
-mount --move /proc /mnt/60065/proc
-mount --move /sys /mnt/60065/sys
-mount --move /dev /mnt/60065/dev
+mount --move /proc /mnt/root/proc
+mount --move /sys /mnt/root/sys
+mount --move /dev /mnt/root/dev
 
-exec switch_60065 /mnt/60065 /sbin/init
+exec switch_root /mnt/root /sbin/init
